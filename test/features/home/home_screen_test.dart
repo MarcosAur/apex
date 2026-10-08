@@ -1,0 +1,95 @@
+import 'package:apex/app/app.dart';
+import 'package:apex/core/database/database_provider.dart';
+import 'package:apex/core/theme/apex_colors.dart';
+import 'package:apex/features/home/providers/clock_provider.dart';
+import 'package:drift/native.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  Future<void> pumpHome(WidgetTester tester, DateTime time) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseConnectionProvider.overrideWithValue(NativeDatabase.memory()),
+          clockProvider.overrideWithValue(() => time),
+        ],
+        child: const ApexApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  for (final (hour, greeting) in [
+    (6, 'Bom dia'),
+    (12, 'Boa tarde'),
+    (18, 'Boa noite'),
+  ]) {
+    testWidgets('Exibe $greeting às $hour horas', (tester) async {
+      await pumpHome(tester, DateTime(2026, 9, 12, hour));
+      expect(find.text(greeting), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 1));
+    });
+  }
+
+  testWidgets('Exibe CTA neon e abre o formulário do treino', (tester) async {
+    await pumpHome(tester, DateTime(2026, 9, 12, 9));
+    final buttonContext = tester.element(
+      find.byKey(const Key('startWorkoutButton')),
+    );
+    final size = tester.getSize(find.byKey(const Key('startWorkoutButton')));
+    expect(size.height, 56);
+    expect(
+      Theme.of(buttonContext).filledButtonTheme.style?.backgroundColor
+          ?.resolve({}),
+      ApexColors.primaryNeon,
+    );
+    await tester.tap(find.byKey(const Key('startWorkoutButton')));
+    await tester.pumpAndSettle();
+    expect(find.text('Adicionar exercício'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
+  testWidgets('Menu lateral mantém Treinos como página selecionada', (
+    tester,
+  ) async {
+    await pumpHome(tester, DateTime(2026, 9, 12, 9));
+    final scaffold = tester.state<ScaffoldState>(find.byType(Scaffold).first);
+
+    await tester.tap(find.byKey(const Key('openNavigationDrawerButton')));
+    await tester.pumpAndSettle();
+
+    expect(scaffold.isDrawerOpen, isTrue);
+    expect(find.byKey(const Key('apexNavigationDrawer')), findsOneWidget);
+    expect(find.byKey(const Key('workoutsDrawerDestination')), findsOneWidget);
+    expect(find.text('Treinos'), findsOneWidget);
+    expect(
+      tester
+          .widget<NavigationDrawer>(find.byType(NavigationDrawer))
+          .selectedIndex,
+      0,
+    );
+
+    await tester.tap(find.byKey(const Key('workoutsDrawerDestination')));
+    await tester.pumpAndSettle();
+    expect(scaffold.isDrawerOpen, isFalse);
+    expect(find.byKey(const Key('startWorkoutButton')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
+  testWidgets('Não apresenta overflow em uma tela estreita', (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await pumpHome(tester, DateTime(2026, 9, 12, 9));
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('openExercisesButton')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+}
